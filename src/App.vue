@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
+import { nextTick, onMounted, onUnmounted, reactive, ref, shallowRef } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
@@ -39,7 +39,10 @@ const logPanel = ref<HTMLElement | null>(null);
 const appVersion = ref("");
 const checkingUpdate = ref(false);
 const downloadingUpdate = ref(false);
-const pendingUpdate = ref<Update | null>(null);
+// 必须用 shallowRef：深响应式 ref 会把 Update 类实例包成 Proxy，
+// downloadAndInstall() 在代理上执行时 this 不再持有 #私有字段，直接抛
+// "Cannot read private member from an object whose class did not declare it"
+const pendingUpdate = shallowRef<Update | null>(null);
 const showUpdateModal = ref(false);
 let lastLoggedProgress = -1;
 
