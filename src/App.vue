@@ -214,7 +214,7 @@ onUnmounted(() => {
         </svg>
       </div>
       <div class="header-text">
-        <h1>图标缓存重建工具</h1>
+        <h1>图标缓存重建工具 OAO</h1>
         <p>修复桌面 / 任务栏图标显示异常与缓存损坏</p>
       </div>
     </header>
