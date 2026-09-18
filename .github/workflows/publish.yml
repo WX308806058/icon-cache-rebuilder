@@ -58,8 +58,8 @@ jobs:
           releaseDraft: true
           prerelease: false
 
-      # latest.json 里的下载地址默认是 GitHub 官方直链，国内直连会超时，
-      # 这里统一加上 ghproxy 镜像前缀，保证老版本客户端能顺利下载更新包
+      # latest.json 里的下载地址默认是 GitHub 官方直链，国内直连不稳定，
+      # 统一改写为 gh-proxy.com 镜像前缀（实测 ~2MB/s，ghproxy.net 仅 ~33KB/s）
       - name: Mirror latest.json download URLs
         shell: bash
         env:
@@ -69,8 +69,8 @@ jobs:
           gh release download "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --pattern latest.json --clobber
           node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('latest.json','utf8'));
             for(const k of Object.keys(j.platforms)){
-              j.platforms[k].url='https://ghproxy.net/'+j.platforms[k].url;
+              j.platforms[k].url='https://gh-proxy.com/'+j.platforms[k].url;
             }
             fs.writeFileSync('latest.json',JSON.stringify(j,null,2)+'\n');
-            console.log('latest.json URLs rewritten to ghproxy mirror');"
+            console.log('latest.json URLs rewritten to gh-proxy mirror');"
           gh release upload "$TAG_NAME" latest.json --repo "$GITHUB_REPOSITORY" --clobber
