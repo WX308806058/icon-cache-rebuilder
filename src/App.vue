@@ -44,6 +44,8 @@ const downloadingUpdate = ref(false);
 // "Cannot read private member from an object whose class did not declare it"
 const pendingUpdate = shallowRef<Update | null>(null);
 const showUpdateModal = ref(false);
+const ctxMenuEnabled = ref(false);
+const ctxMenuBusy = ref(false);
 let lastLoggedProgress = -1;
 
 let unlisten: UnlistenFn | null = null;
@@ -127,6 +129,34 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
+async function loadContextMenuState() {
+  try {
+    ctxMenuEnabled.value = await invoke<boolean>("is_context_menu_enabled");
+  } catch (e) {
+    pushLog(`读取右键菜单状态失败: ${e}`, "error");
+  }
+}
+
+async function toggleContextMenu() {
+  if (ctxMenuBusy.value) return;
+  ctxMenuBusy.value = true;
+  try {
+    ctxMenuEnabled.value = await invoke<boolean>("set_context_menu", {
+      enabled: !ctxMenuEnabled.value,
+    });
+    pushLog(
+      ctxMenuEnabled.value
+        ? "右键菜单已注册：在桌面或文件夹空白处右键即可快速重建图标缓存。"
+        : "右键菜单项已移除。",
+      "success",
+    );
+  } catch (e) {
+    pushLog(`设置右键菜单失败: ${e}`, "error");
+  } finally {
+    ctxMenuBusy.value = false;
+  }
+}
+
 async function checkForUpdate(silent = false) {
   if (checkingUpdate.value || downloadingUpdate.value) return;
   checkingUpdate.value = true;
@@ -192,6 +222,7 @@ async function installUpdate() {
 onMounted(async () => {
   unlisten = await listen<StepRecord>("rebuild-progress", (event) => applyStepEvent(event.payload));
   await loadCacheInfo();
+  loadContextMenuState();
   pushLog("就绪。点击“开始重建图标缓存”执行操作。");
   try {
     appVersion.value = await getVersion();
@@ -251,6 +282,21 @@ onUnmounted(() => {
           <span class="value">
             <template v-if="cacheInfo.icon_cache_db !== null">{{ formatBytes(cacheInfo.icon_cache_db) }}</template>
             <span v-else class="muted">不存在</span>
+          </span>
+        </div>
+        <div class="info-row">
+          <span class="label">右键菜单</span>
+          <span class="value ctx-menu-value">
+            <span
+              class="ctx-state"
+              :class="{ on: ctxMenuEnabled }"
+              title="在桌面或文件夹空白处右键即可快速执行重建，无需打开应用"
+            >
+              {{ ctxMenuEnabled ? "已启用" : "未启用" }}
+            </span>
+            <button class="ctx-toggle" :disabled="ctxMenuBusy" @click="toggleContextMenu">
+              {{ ctxMenuBusy ? "处理中 ..." : ctxMenuEnabled ? "移除" : "启用" }}
+            </button>
           </span>
         </div>
       </div>
@@ -522,6 +568,44 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---------- context menu toggle ---------- */
+.ctx-menu-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ctx-state {
+  color: #64748b;
+}
+
+.ctx-state.on {
+  color: #6ee7b7;
+}
+
+.ctx-toggle {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 11.5px;
+  font-family: inherit;
+  letter-spacing: 1px;
+  color: #94a3b8;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ctx-toggle:hover:not(:disabled) {
+  color: #7dd3fc;
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.ctx-toggle:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .muted {
