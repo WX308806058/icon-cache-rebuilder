@@ -129,8 +129,8 @@ async function checkForUpdate(silent = false) {
   checkingUpdate.value = true;
   if (!silent) pushLog("正在检查更新 ...");
   try {
-    // 官方源直连超时时会自动回退到镜像 endpoint
-    const update = await check({ timeout: 15 });
+    // 官方源直连超时时会自动回退到镜像 endpoint；timeout 单位为毫秒，15 秒
+    const update = await check({ timeout: 15000 });
     if (update) {
       pendingUpdate.value = update;
       showUpdateModal.value = true;

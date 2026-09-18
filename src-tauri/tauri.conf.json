@@ -43,8 +43,8 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM1NkE4NUU0NDg5Q0QwN0UKUldSKzBKeEk1SVZxTlUwQ3BlT1grL2hmUXpmOXZHZXhuRlhhOVZVUjlZekdDUWh0em9BbWhRSDgK",
       "endpoints": [
-        "https://github.com/WX308806058/icon-cache-rebuilder/releases/latest/download/latest.json",
-        "https://ghproxy.net/https://github.com/WX308806058/icon-cache-rebuilder/releases/latest/download/latest.json"
+        "https://ghproxy.net/https://github.com/WX308806058/icon-cache-rebuilder/releases/latest/download/latest.json",
+        "https://github.com/WX308806058/icon-cache-rebuilder/releases/latest/download/latest.json"
       ]
     }
   }
