@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "IconCacheRebuilder",
+  "version": "0.1.0",
+  "identifier": "com.oao.iconcache-rebuilder",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "图标缓存重建工具",
+        "width": 540,
+        "height": 780,
+        "minWidth": 500,
+        "minHeight": 700,
+        "center": true,
+        "resizable": true,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "useLocalToolsDir": true,
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM1NkE4NUU0NDg5Q0QwN0UKUldSKzBKeEk1SVZxTlUwQ3BlT1grL2hmUXpmOXZHZXhuRlhhOVZVUjlZekdDUWh0em9BbWhRSDgK",
+      "endpoints": [
+        "https://github.com/WX308806058/icon-cache-rebuilder/releases/latest/download/latest.json",
+        "https://ghproxy.net/https://github.com/WX308806058/icon-cache-rebuilder/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}
