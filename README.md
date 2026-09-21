@@ -92,12 +92,12 @@ git tag v0.2.0
 git push origin main --tags
 ```
 
-推送 `v*` 格式的 tag 后，GitHub Actions（`.github/workflows/publish.yml`）自动执行：
+推送 `v*` 格式的 tag 后，GitHub Actions（`.github/workflows/publish.yml`）自动执行，全程无需人工干预：
 
 1. 从 tag 同步版本号（无需手动改 `tauri.conf.json` / `package.json`）
 2. 构建 NSIS 安装包，并用 `TAURI_SIGNING_PRIVATE_KEY` 签名生成更新包
-3. 上传 `xxx-setup.exe`、`xxx-setup.nsis.zip`（+ `.sig`）、`latest.json` 到草稿 Release
-4. 到仓库 Releases 页确认无误后点 **Publish release** —— 已安装旧版本的应用即可检测到并完成升级
+3. 上传 `xxx-setup.exe`（+ `.sig`）、`latest.json` 并**自动发布 Release**（`releaseDraft: false`）
+4. 把 `latest.json` 里的下载地址改写为 gh-proxy.com 国内镜像 —— 已安装旧版本的应用即可检测到新版本并完成升级（镜像有 ~5 分钟缓存，Publish 后稍等再检查更新）
 
 ### 本地构建（可选）
 
