@@ -1,4 +1,4 @@
-# 图标缓存重建工具 (IconCacheRebuilder)
+# 系统优化工具 (IconCacheRebuilder)
 
 基于 **Tauri 2 + Vue 3 + TypeScript + Vite 5** 的 Windows 桌面工具，用于重建 Windows 图标缓存，修复桌面 / 任务栏 / 资源管理器中图标显示异常（白图标、错位图标、缓存损坏）的问题。
 
@@ -20,6 +20,9 @@
 - 时间戳执行日志，失败文件逐条列出（如被其他进程占用）
 - 执行前二次确认弹窗；重建运行期间禁止关闭窗口，避免 explorer 未重启
 - 无需管理员权限（仅操作当前用户目录与进程）
+- **桌面右键菜单**：安装后自动注册「重建图标缓存」菜单项，应用未启动也能右键快速执行（可在界面一键移除）
+- **WorkBuddy 菜单清理**：一键清除 WorkBuddy 桌面右键菜单的注册表残留（HKLM×2 + HKCU×2 共 4 处），系统级注册自动请求管理员权限（UAC）后完成
+- **应用内一键发版**：选择项目目录 → 自动读取最新标签并预填下一版本号（可手动修改）→ 可选填发布说明（写入附注标签注释，GitHub Release 页面自动引用为说明；留空则用提交说明）→ 点击发布，自动执行 提交 → 推送 → 打附注标签 → 推送标签，GitHub Actions 随后自动构建并发布（每步进度实时显示）
 - **在线升级**：启动时自动检查新版本，也可点击底部「检查更新」手动触发（GitHub Releases，官方源 + 国内镜像双通道）
 
 ## 环境要求
@@ -55,7 +58,7 @@ npm run tauri build
 产物：
 
 - 可执行文件：`src-tauri/target/release/icon-cache-rebuilder.exe`
-- NSIS 安装包：`src-tauri/target/release/bundle/nsis/IconCacheRebuilder_0.1.0_x64-setup.exe`
+- NSIS 安装包：`src-tauri/target/release/bundle/nsis/系统优化工具_<版本>_x64-setup.exe`
 
 ### 关于 useLocalToolsDir
 
