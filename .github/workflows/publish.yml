@@ -84,8 +84,14 @@ jobs:
             || gh release create "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
                  --title "系统优化工具 v$VER" --notes "$NOTES" --verify-tag
           SETUP_EXE=$(ls "src-tauri/target/release/bundle/nsis/"*-setup.exe | head -n1)
-          echo "installer: $(basename "$SETUP_EXE")"
-          gh release upload "$TAG_NAME" "$SETUP_EXE" "$SETUP_EXE.sig" --repo "$GITHUB_REPOSITORY" --clobber
+          # GitHub 资产名不支持非 ASCII（中文会被静默剥离成 "_0.9.0_x64-setup.exe"，v0.9.0 实测），
+          # 上传前复制为 ASCII 名；latest.json 的 URL 也指向该名字
+          ASSET_NAME="SystemOptimizer_${VER}_x64-setup.exe"
+          mkdir -p bundle-out
+          cp "$SETUP_EXE" "bundle-out/$ASSET_NAME"
+          cp "$SETUP_EXE.sig" "bundle-out/$ASSET_NAME.sig"
+          echo "installer asset: $ASSET_NAME"
+          gh release upload "$TAG_NAME" "bundle-out/$ASSET_NAME" "bundle-out/$ASSET_NAME.sig" --repo "$GITHUB_REPOSITORY" --clobber
 
       # 生成 latest.json（老客户端自动升级的更新清单）：
       # signature = base64(.sig 文件全文)；url 直接套 gh-proxy.com 镜像前缀（国内实测 ~2MB/s）
@@ -96,7 +102,8 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
           NOTES: ${{ steps.notes.outputs.notes }}
         run: |
-          SETUP_EXE=$(ls "src-tauri/target/release/bundle/nsis/"*-setup.exe | head -n1)
+          VER="${TAG_NAME#v}"
+          ASSET_NAME="SystemOptimizer_${VER}_x64-setup.exe"
           node -e '
             const fs = require("fs");
             const sig = fs.readFileSync(process.argv[1]).toString("base64");
@@ -114,5 +121,5 @@ jobs:
             };
             fs.writeFileSync("latest.json", JSON.stringify(j, null, 2) + "\n");
             console.log("latest.json generated for " + name);
-          ' "$SETUP_EXE.sig" "$(basename "$SETUP_EXE")"
+          ' "bundle-out/$ASSET_NAME.sig" "$ASSET_NAME"
           gh release upload "$TAG_NAME" latest.json --repo "$GITHUB_REPOSITORY" --clobber
