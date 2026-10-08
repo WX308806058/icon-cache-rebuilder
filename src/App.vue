@@ -54,6 +54,14 @@ const cacheLoading = ref(false);
 const showConfirm = ref(false);
 const logPanel = ref<HTMLElement | null>(null);
 
+// ---------- 页签 ----------
+const activeTab = ref<"rebuild" | "release">("rebuild");
+const subtitle = computed(() =>
+  activeTab.value === "rebuild"
+    ? "修复桌面 / 任务栏图标显示异常与缓存损坏"
+    : "提交 → 推送 → 打附注标签，GitHub Actions 自动构建并发布",
+);
+
 const appVersion = ref("");
 const checkingUpdate = ref(false);
 const downloadingUpdate = ref(false);
@@ -437,10 +445,30 @@ onUnmounted(() => {
       </div>
       <div class="header-text">
         <h1>系统优化工具</h1>
-        <p>修复桌面 / 任务栏图标显示异常与缓存损坏</p>
+        <p>{{ subtitle }}</p>
       </div>
     </header>
 
+    <nav class="tabs">
+      <button class="tab" :class="{ active: activeTab === 'rebuild' }" @click="activeTab = 'rebuild'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+          <path d="M21 3v6h-6" />
+        </svg>
+        图标缓存重建
+      </button>
+      <button class="tab" :class="{ active: activeTab === 'release' }" @click="activeTab = 'release'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
+          <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
+          <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
+          <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
+        </svg>
+        版本发布
+      </button>
+    </nav>
+
+    <div v-show="activeTab === 'rebuild'" class="tab-panel">
     <section class="card">
       <div class="card-head">
         <h2>缓存概况</h2>
@@ -562,7 +590,9 @@ onUnmounted(() => {
       <span v-if="running" class="btn-inner"><span class="btn-spinner"></span>正在重建 ...</span>
       <span v-else class="btn-inner">开始重建图标缓存</span>
     </button>
+    </div>
 
+    <div v-show="activeTab === 'release'" class="tab-panel">
     <section class="card">
       <div class="card-head">
         <h2>版本发布</h2>
@@ -678,6 +708,7 @@ onUnmounted(() => {
         </ol>
       </div>
     </section>
+    </div>
 
     <section class="card log-card">
       <div class="card-head">
@@ -832,6 +863,56 @@ onUnmounted(() => {
   margin-top: 3px;
   font-size: 12px;
   color: #94a3b8;
+}
+
+/* ---------- tabs ---------- */
+.tabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.07);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: none;
+  border-radius: 9px;
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: inherit;
+  letter-spacing: 1px;
+  color: #94a3b8;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab:hover {
+  color: #cbd5e1;
+}
+
+.tab.active {
+  color: #fff;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.35), rgba(99, 102, 241, 0.35));
+  box-shadow: 0 3px 12px rgba(56, 128, 248, 0.25);
+}
+
+.tab svg {
+  width: 15px;
+  height: 15px;
+}
+
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* ---------- card ---------- */
