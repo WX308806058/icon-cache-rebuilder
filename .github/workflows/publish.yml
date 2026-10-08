@@ -63,33 +63,56 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
-      # 构建 NSIS 安装包并用 TAURI_SIGNING_PRIVATE_KEY 签名，
-      # 自动上传 setup.exe / .sig / latest.json 并直接发布（releaseDraft: false）
-      - name: Build and upload release
-        uses: tauri-apps/tauri-action@v0
+      # tauri-action 无法处理中文 productName：资产名被剥成 "_0.9.0_x64-setup.exe"（v0.9.0 实测），
+      # 且不生成 latest.json，导致老客户端无法自动升级。
+      # 改为直接 tauri build + gh CLI 上传：资产名取自实际构建产物，latest.json 手工生成，全程可控
+      - name: Build signed installer
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "系统优化工具 v__VERSION__"
-          releaseBody: ${{ steps.notes.outputs.notes }}
-          releaseDraft: false
-          prerelease: false
+        run: npx tauri build
 
-      # latest.json 里的下载地址默认是 GitHub 官方直链，国内直连不稳定，
-      # 统一改写为 gh-proxy.com 镜像前缀（实测 ~2MB/s，ghproxy.net 仅 ~33KB/s）
-      - name: Mirror latest.json download URLs
+      - name: Create release and upload installer
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
+          NOTES: ${{ steps.notes.outputs.notes }}
         run: |
-          gh release download "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --pattern latest.json --clobber
-          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('latest.json','utf8'));
-            for(const k of Object.keys(j.platforms)){
-              j.platforms[k].url='https://gh-proxy.com/'+j.platforms[k].url;
-            }
-            fs.writeFileSync('latest.json',JSON.stringify(j,null,2)+'\n');
-            console.log('latest.json URLs rewritten to gh-proxy mirror');"
+          VER="${TAG_NAME#v}"
+          gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
+                 --title "系统优化工具 v$VER" --notes "$NOTES" --verify-tag
+          SETUP_EXE=$(ls "src-tauri/target/release/bundle/nsis/"*-setup.exe | head -n1)
+          echo "installer: $(basename "$SETUP_EXE")"
+          gh release upload "$TAG_NAME" "$SETUP_EXE" "$SETUP_EXE.sig" --repo "$GITHUB_REPOSITORY" --clobber
+
+      # 生成 latest.json（老客户端自动升级的更新清单）：
+      # signature = base64(.sig 文件全文)；url 直接套 gh-proxy.com 镜像前缀（国内实测 ~2MB/s）
+      - name: Generate and upload latest.json
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+          NOTES: ${{ steps.notes.outputs.notes }}
+        run: |
+          SETUP_EXE=$(ls "src-tauri/target/release/bundle/nsis/"*-setup.exe | head -n1)
+          node -e '
+            const fs = require("fs");
+            const sig = fs.readFileSync(process.argv[1]).toString("base64");
+            const name = process.argv[2];
+            const url = "https://gh-proxy.com/https://github.com/" + process.env.GITHUB_REPOSITORY
+              + "/releases/download/" + process.env.TAG_NAME + "/" + encodeURIComponent(name);
+            const j = {
+              version: process.env.TAG_NAME.replace(/^v/, ""),
+              notes: process.env.NOTES,
+              pub_date: new Date().toISOString(),
+              platforms: {
+                "windows-x86_64": { signature: sig, url: url },
+                "windows-x86_64-nsis": { signature: sig, url: url },
+              },
+            };
+            fs.writeFileSync("latest.json", JSON.stringify(j, null, 2) + "\n");
+            console.log("latest.json generated for " + name);
+          ' "$SETUP_EXE.sig" "$(basename "$SETUP_EXE")"
           gh release upload "$TAG_NAME" latest.json --repo "$GITHUB_REPOSITORY" --clobber
