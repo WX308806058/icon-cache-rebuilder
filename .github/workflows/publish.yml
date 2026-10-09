@@ -94,7 +94,9 @@ jobs:
           gh release upload "$TAG_NAME" "bundle-out/$ASSET_NAME" "bundle-out/$ASSET_NAME.sig" --repo "$GITHUB_REPOSITORY" --clobber
 
       # 生成 latest.json（老客户端自动升级的更新清单）：
-      # signature = base64(.sig 文件全文)；url 直接套 gh-proxy.com 镜像前缀（国内实测 ~2MB/s）
+      # signature = .sig 文件内容原样——tauri v2 构建出的 .sig 本身已是 base64 编码的 minisign 签名，
+      # 切勿再做 base64（双重编码会让客户端报 "Invalid encoding in minisign data"，v0.9.1 实测）；
+      # url 直接套 gh-proxy.com 镜像前缀（国内实测 ~2MB/s）
       - name: Generate and upload latest.json
         shell: bash
         env:
@@ -106,7 +108,7 @@ jobs:
           ASSET_NAME="SystemOptimizer_${VER}_x64-setup.exe"
           node -e '
             const fs = require("fs");
-            const sig = fs.readFileSync(process.argv[1]).toString("base64");
+            const sig = fs.readFileSync(process.argv[1]).toString("utf8").trim();
             const name = process.argv[2];
             const url = "https://gh-proxy.com/https://github.com/" + process.env.GITHUB_REPOSITORY
               + "/releases/download/" + process.env.TAG_NAME + "/" + encodeURIComponent(name);
