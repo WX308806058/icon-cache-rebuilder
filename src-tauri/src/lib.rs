@@ -762,7 +762,7 @@ mod release {
             );
         }
 
-        // ---- 步骤 3：推送代码到 origin（需网络，SteamSpeed 代理下较快） ----
+        // ---- 步骤 3：推送代码到 origin（需网络，走代理较快） ----
         emit_step(
             app,
             &mut steps,
@@ -772,7 +772,7 @@ mod release {
             format!("正在推送 {branch} 到 origin（需网络，可能较慢）..."),
         );
         if let Err(e) = git(&dir_path, &["push", "origin", &branch]) {
-            let msg = format!("推送失败: {e}。请确认已开启 SteamSpeed 后重试（本地提交已保留，无需重复提交）");
+            let msg = format!("推送失败: {e}。请确认已开启代理后重试（本地提交已保留，无需重复提交）");
             emit_step(app, &mut steps, 3, s3, "failed", msg.clone());
             return Err(msg);
         }

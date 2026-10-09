@@ -882,7 +882,7 @@ onUnmounted(() => {
         </p>
         <p v-if="releaseInfo.changed_files > 0" class="update-notes">{{ releaseInfo.changes_preview.join("\n") }}<template v-if="releaseInfo.changed_files > releaseInfo.changes_preview.length">… 等共 {{ releaseInfo.changed_files }} 处改动</template></p>
         <p v-else class="modal-text">工作区无改动，本次仅推送并打标签。</p>
-        <p class="modal-tip">推送需访问 GitHub：请确认 SteamSpeed 已开启。</p>
+        <p class="modal-tip">推送需访问 GitHub：请确认已开启代理。</p>
         <div class="modal-actions">
           <button class="ghost-btn" :disabled="releasing" @click="showReleaseConfirm = false">取消</button>
           <button class="primary-btn small" :disabled="releasing" @click="startRelease">确认发布</button>
