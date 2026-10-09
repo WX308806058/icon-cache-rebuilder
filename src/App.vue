@@ -1069,7 +1069,8 @@ onUnmounted(() => {
 
 .info-row .label {
   flex-shrink: 0;
-  width: 96px;
+  width: 110px;
+  white-space: nowrap;
   color: #94a3b8;
 }
 
