@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, shallowRef } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
@@ -28,6 +28,7 @@ interface LogLine {
   time: string;
   text: string;
   level: "info" | "success" | "warn" | "error";
+  tab: "rebuild" | "release";
 }
 
 const INIT_STEPS: StepItem[] = [
@@ -61,6 +62,16 @@ const subtitle = computed(() =>
     ? "修复桌面 / 任务栏图标显示异常与缓存损坏"
     : "提交 → 推送 → 打附注标签，GitHub Actions 自动构建并发布",
 );
+
+// 日志按页签归属过滤：重建与发布各自只显示自己的日志，避免语境错乱
+const visibleLogs = computed(() => logs.filter((l) => l.tab === activeTab.value));
+
+// 切换页签后日志面板滚到底部（显示的是另一组日志）
+watch(activeTab, () => {
+  nextTick(() => {
+    if (logPanel.value) logPanel.value.scrollTop = logPanel.value.scrollHeight;
+  });
+});
 
 const appVersion = ref("");
 const checkingUpdate = ref(false);
@@ -114,11 +125,14 @@ function now(): string {
   return new Date().toLocaleTimeString("zh-CN", { hour12: false });
 }
 
-function pushLog(text: string, level: LogLine["level"] = "info") {
-  logs.push({ time: now(), text, level });
-  nextTick(() => {
-    if (logPanel.value) logPanel.value.scrollTop = logPanel.value.scrollHeight;
-  });
+function pushLog(text: string, level: LogLine["level"] = "info", tab: LogLine["tab"] = "rebuild") {
+  logs.push({ time: now(), text, level, tab });
+  // 仅当写入的日志属于当前页签时才滚动日志面板
+  if (tab === activeTab.value) {
+    nextTick(() => {
+      if (logPanel.value) logPanel.value.scrollTop = logPanel.value.scrollHeight;
+    });
+  }
 }
 
 async function loadCacheInfo() {
@@ -270,7 +284,7 @@ function applyReleaseStepEvent(rec: StepRecord) {
     warning: "warn",
     failed: "error",
   };
-  pushLog(`[发布·${rec.name}] ${rec.message}`, levelMap[rec.status] ?? "info");
+  pushLog(`[发布·${rec.name}] ${rec.message}`, levelMap[rec.status] ?? "info", "release");
 }
 
 async function loadReleaseInfo() {
@@ -306,18 +320,18 @@ async function pickReleaseDir() {
       await loadReleaseInfo();
     }
   } catch (e) {
-    pushLog(`打开目录选择对话框失败: ${e}`, "error");
+    pushLog(`打开目录选择对话框失败: ${e}`, "error", "release");
   }
 }
 
 function openReleaseConfirm() {
   if (releasing.value) return;
   if (!releaseInfo.value) {
-    pushLog("请先选择有效的项目目录（git 仓库）", "error");
+    pushLog("请先选择有效的项目目录（git 仓库）", "error", "release");
     return;
   }
   if (!normalizedReleaseVersion.value) {
-    pushLog("请填写发布版本号（如 v0.9.1）", "error");
+    pushLog("请填写发布版本号（如 v0.9.1）", "error", "release");
     return;
   }
   showReleaseConfirm.value = true;
@@ -333,7 +347,7 @@ async function startRelease() {
     s.status = "idle";
     s.message = RELEASE_STEPS[s.step - 1].message;
   }
-  pushLog(`开始发布 ${normalizedReleaseVersion.value} ...`);
+  pushLog(`开始发布 ${normalizedReleaseVersion.value} ...`, "info", "release");
   try {
     const result = await invoke<ReleaseResult>("release_version", {
       projectDir: releaseDir.value.trim(),
@@ -344,10 +358,11 @@ async function startRelease() {
     pushLog(
       `版本 ${result.tag} 发布流程完成：GitHub Actions 构建中，约 7~10 分钟后自动发布。`,
       "success",
+      "release",
     );
-    pushLog("镜像缓存约 5 分钟后过期，届时旧版本应用可检测到新版本。");
+    pushLog("镜像缓存约 5 分钟后过期，届时旧版本应用可检测到新版本。", "info", "release");
   } catch (e) {
-    pushLog(`发布失败: ${e}`, "error");
+    pushLog(`发布失败: ${e}`, "error", "release");
   } finally {
     releasing.value = false;
     loadReleaseInfo();
@@ -459,6 +474,7 @@ onMounted(async () => {
   loadWorkBuddyStatus();
   loadReleaseInfo();
   pushLog("就绪。点击“开始重建图标缓存”执行操作。");
+  pushLog("就绪。选择项目目录后点击“发布新版本”。", "info", "release");
   try {
     appVersion.value = await getVersion();
   } catch {
@@ -753,10 +769,10 @@ onUnmounted(() => {
     <section class="card log-card">
       <div class="card-head">
         <h2>执行日志</h2>
-        <span class="muted">{{ logs.length }} 条</span>
+        <span class="muted">{{ visibleLogs.length }} 条</span>
       </div>
       <div ref="logPanel" class="log">
-        <div v-for="(l, i) in logs" :key="i" class="log-line" :data-level="l.level">
+        <div v-for="(l, i) in visibleLogs" :key="i" class="log-line" :data-level="l.level">
           <span class="log-time">{{ l.time }}</span>
           <span class="log-text">{{ l.text }}</span>
         </div>
