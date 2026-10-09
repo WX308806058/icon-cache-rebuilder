@@ -30,3 +30,6 @@ updater-keys/
 *.njsproj
 *.sln
 *.sw?
+
+# WorkBuddy agent workspace (session data, memory - never commit)
+.workbuddy/

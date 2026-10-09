@@ -7,7 +7,11 @@ use std::thread;
 use std::time::Duration;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Emitter, Manager,
+};
 
 /// 隐藏子进程的控制台窗口，避免 taskkill / attrib 弹出黑框
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -930,6 +934,15 @@ fn run_headless_remove_workbuddy() {
     std::process::exit(0);
 }
 
+/// 恢复并聚焦主窗口（托盘左键单击 / 托盘菜单「显示主界面」）
+fn show_main_window(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 右键菜单静默模式：不创建窗口，直接重建后弹窗反馈
@@ -947,14 +960,54 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(RebuildRunning(AtomicBool::new(false)))
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        .setup(|app| {
+            // 系统托盘：窗口最小化后隐藏到托盘，从这里恢复或退出
+            let show_item = MenuItem::with_id(app, "tray-show", "显示主界面", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "tray-quit", "退出", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            TrayIconBuilder::with_id("main-tray")
+                .icon(
+                    app.default_window_icon()
+                        .expect("missing default window icon")
+                        .clone(),
+                )
+                .tooltip("系统优化工具")
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "tray-show" => show_main_window(app),
+                    "tray-quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    // 左键单击托盘图标：恢复主窗口
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main_window(tray.app_handle());
+                    }
+                })
+                .build(app)?;
+            Ok(())
+        })
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
                 let running = window.state::<RebuildRunning>().0.load(Ordering::SeqCst);
                 if running {
                     // 重建期间禁止关闭窗口，避免 explorer 已被结束但未重启
                     api.prevent_close();
                 }
             }
+            tauri::WindowEvent::Resized(_) => {
+                // 最小化时隐藏窗口（最小化到托盘）：任务栏不保留，从托盘图标恢复
+                if window.is_minimized().unwrap_or(false) {
+                    let _ = window.hide();
+                }
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             get_cache_info,

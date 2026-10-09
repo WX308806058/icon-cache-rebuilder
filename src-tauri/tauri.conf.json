@@ -14,11 +14,11 @@
       {
         "title": "系统优化工具",
         "width": 540,
-        "height": 780,
-        "minWidth": 500,
-        "minHeight": 700,
+        "height": 840,
         "center": true,
-        "resizable": true,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": true,
         "theme": "Dark"
       }
     ],

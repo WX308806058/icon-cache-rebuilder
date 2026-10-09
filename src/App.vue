@@ -64,17 +64,24 @@ const subtitle = computed(() =>
 
 const appVersion = ref("");
 const checkingUpdate = ref(false);
-const downloadingUpdate = ref(false);
 // 必须用 shallowRef：深响应式 ref 会把 Update 类实例包成 Proxy，
 // downloadAndInstall() 在代理上执行时 this 不再持有 #私有字段，直接抛
 // "Cannot read private member from an object whose class did not declare it"
 const pendingUpdate = shallowRef<Update | null>(null);
 const showUpdateModal = ref(false);
+// 更新弹出框内部阶段：confirm 确认 → downloading 下载安装 → done 完成待重启
+const updateStage = ref<"confirm" | "downloading" | "done">("confirm");
+const updateProgress = ref(0); // 0~100
+const updateFailed = ref(false);
+// 更新过程日志：只在弹出框内显示，不进主窗口执行日志
+const updateLogs = reactive<{ time: string; text: string; level: "info" | "success" | "error" }[]>([]);
+const updateLogPanel = ref<HTMLElement | null>(null);
+// 「检查更新」按钮旁的短暂反馈（2.5s 后自动消失）
+const updateHint = ref<"" | "latest" | "error">("");
 const ctxMenuEnabled = ref(false);
 const ctxMenuBusy = ref(false);
 const wbStatus = ref<WorkBuddyStatus | null>(null);
 const wbBusy = ref(false);
-let lastLoggedProgress = -1;
 
 // ---------- 版本发布 ----------
 const releaseSteps = reactive<StepItem[]>(RELEASE_STEPS.map((s) => ({ ...s })));
@@ -348,64 +355,97 @@ async function startRelease() {
 }
 
 async function checkForUpdate(silent = false) {
-  if (checkingUpdate.value || downloadingUpdate.value) return;
+  if (checkingUpdate.value) return;
   checkingUpdate.value = true;
-  if (!silent) pushLog("正在检查更新 ...");
+  if (!silent) updateHint.value = "";
   try {
     // 官方源直连超时时会自动回退到镜像 endpoint；timeout 单位为毫秒，15 秒
     const update = await check({ timeout: 15000 });
     if (update) {
+      // 更新过程不写主窗口执行日志，全部在弹出框内展示
       pendingUpdate.value = update;
+      updateStage.value = "confirm";
+      updateFailed.value = false;
+      updateProgress.value = 0;
       showUpdateModal.value = true;
-      pushLog(`发现新版本 v${update.version}（当前 v${appVersion.value}）`, "success");
     } else if (!silent) {
-      pushLog("当前已是最新版本。", "success");
+      updateHint.value = "latest";
+      window.setTimeout(() => {
+        if (updateHint.value === "latest") updateHint.value = "";
+      }, 2500);
     }
-  } catch (e) {
-    pushLog(`检查更新失败: ${e}`, "error");
+  } catch {
+    // 静默检查（启动时）失败不打扰用户；手动检查在按钮旁短暂提示
+    if (!silent) {
+      updateHint.value = "error";
+      window.setTimeout(() => {
+        if (updateHint.value === "error") updateHint.value = "";
+      }, 2500);
+    }
   } finally {
     checkingUpdate.value = false;
   }
 }
 
+function pushUpdateLog(text: string, level: "info" | "success" | "error" = "info") {
+  updateLogs.push({ time: now(), text, level });
+  nextTick(() => {
+    if (updateLogPanel.value) updateLogPanel.value.scrollTop = updateLogPanel.value.scrollHeight;
+  });
+}
+
+function closeUpdateModal() {
+  // 下载进行中不允许关闭（避免中断安装）；失败后可以关闭
+  if (updateStage.value === "downloading" && !updateFailed.value) return;
+  showUpdateModal.value = false;
+  pendingUpdate.value = null;
+}
+
 async function installUpdate() {
   const update = pendingUpdate.value;
-  if (!update || downloadingUpdate.value) return;
-  downloadingUpdate.value = true;
-  showUpdateModal.value = false;
-  lastLoggedProgress = -1;
+  if (!update || (updateStage.value === "downloading" && !updateFailed.value)) return;
+  updateStage.value = "downloading";
+  updateFailed.value = false;
+  updateProgress.value = 0;
+  updateLogs.length = 0;
+  let contentLength = 0;
+  let downloaded = 0;
+  let lastLoggedPercent = -20;
+  pushUpdateLog(`发现新版本 v${update.version}（当前 v${appVersion.value}）`, "success");
   try {
-    pushLog(`开始下载 v${update.version} ...`);
-    let contentLength = 0;
-    let downloaded = 0;
     await update.downloadAndInstall((event) => {
       switch (event.event) {
         case "Started":
           contentLength = event.data.contentLength ?? 0;
-          if (contentLength > 0) pushLog(`更新包大小 ${formatBytes(contentLength)}`);
+          if (contentLength > 0) pushUpdateLog(`更新包大小 ${formatBytes(contentLength)}`);
           break;
-        case "Progress":
+        case "Progress": {
           downloaded += event.data.chunkLength;
           if (contentLength > 0) {
-            const percent = Math.floor((downloaded / contentLength) * 100);
-            if (percent >= lastLoggedProgress + 20) {
-              lastLoggedProgress = percent;
-              pushLog(`下载进度 ${percent}%（${formatBytes(downloaded)} / ${formatBytes(contentLength)}）`);
+            updateProgress.value = Math.min(99, Math.floor((downloaded / contentLength) * 100));
+            if (updateProgress.value >= lastLoggedPercent + 20) {
+              lastLoggedPercent = updateProgress.value;
+              pushUpdateLog(
+                `下载进度 ${updateProgress.value}%（${formatBytes(downloaded)} / ${formatBytes(contentLength)}）`,
+              );
             }
           }
           break;
+        }
         case "Finished":
-          pushLog("下载完成，正在安装新版本 ...", "success");
+          updateProgress.value = 100;
+          pushUpdateLog("下载完成，正在安装新版本 ...", "success");
           break;
       }
     });
-    pushLog("安装完成，应用即将重启。", "success");
+    updateStage.value = "done";
+    pushUpdateLog("安装完成，应用即将重启。", "success");
+    // 短暂停留让用户看到完成状态，随后重启应用（所有窗口随之关闭）
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     await relaunch();
   } catch (e) {
-    pushLog(`更新失败: ${e}`, "error");
-  } finally {
-    downloadingUpdate.value = false;
-    pendingUpdate.value = null;
+    updateFailed.value = true;
+    pushUpdateLog(`更新失败: ${e}`, "error");
   }
 }
 
@@ -424,7 +464,7 @@ onMounted(async () => {
   } catch {
     appVersion.value = "";
   }
-  // 启动后静默检查一次更新，失败不打扰用户（日志区留痕）
+  // 启动后静默检查一次更新：发现新版本弹确认框，失败不打扰用户
   checkForUpdate(true);
 });
 
@@ -728,12 +768,14 @@ onUnmounted(() => {
         <span v-if="appVersion" class="ver">v{{ appVersion }}</span>
         <button
           class="update-btn"
-          :disabled="checkingUpdate || downloadingUpdate"
+          :disabled="checkingUpdate || (updateStage === 'downloading' && !updateFailed)"
           title="从 GitHub 检查是否有新版本"
           @click="checkForUpdate()"
         >
-          <span v-if="downloadingUpdate" class="btn-inner"><span class="btn-spinner mini"></span>正在更新 ...</span>
+          <span v-if="updateStage === 'downloading' && !updateFailed" class="btn-inner"><span class="btn-spinner mini"></span>正在更新 ...</span>
           <span v-else-if="checkingUpdate" class="btn-inner"><span class="btn-spinner mini"></span>检查更新 ...</span>
+          <span v-else-if="updateHint === 'latest'" class="hint-ok">已是最新</span>
+          <span v-else-if="updateHint === 'error'" class="hint-error">检查失败</span>
           <span v-else>检查更新</span>
         </button>
       </div>
@@ -761,7 +803,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-if="showUpdateModal && pendingUpdate" class="modal-overlay" @click.self="showUpdateModal = false">
+    <div v-if="showUpdateModal && pendingUpdate" class="modal-overlay" @click.self="closeUpdateModal">
       <div class="modal">
         <div class="modal-icon update">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -770,17 +812,53 @@ onUnmounted(() => {
             <path d="M5 21h14" />
           </svg>
         </div>
-        <h3>发现新版本 v{{ pendingUpdate.version }}</h3>
-        <p class="modal-text">
-          当前版本 <span class="mono-inline">v{{ appVersion }}</span>，新版本
-          <span class="mono-inline">v{{ pendingUpdate.version }}</span> 已发布。
-        </p>
-        <p v-if="pendingUpdate.body" class="update-notes">{{ pendingUpdate.body }}</p>
-        <p class="modal-tip">下载完成后将自动安装新版本并重启应用。</p>
-        <div class="modal-actions">
-          <button class="ghost-btn" @click="showUpdateModal = false">稍后再说</button>
-          <button class="primary-btn small" @click="installUpdate">立即更新</button>
-        </div>
+
+        <!-- 阶段一：确认更新 -->
+        <template v-if="updateStage === 'confirm'">
+          <h3>发现新版本 v{{ pendingUpdate.version }}</h3>
+          <p class="modal-text">
+            当前版本 <span class="mono-inline">v{{ appVersion }}</span>，新版本
+            <span class="mono-inline">v{{ pendingUpdate.version }}</span> 已发布。
+          </p>
+          <p v-if="pendingUpdate.body" class="update-notes">{{ pendingUpdate.body }}</p>
+          <p class="modal-tip">下载完成后将自动安装新版本并重启应用。</p>
+          <div class="modal-actions">
+            <button class="ghost-btn" @click="closeUpdateModal">稍后再说</button>
+            <button class="primary-btn small" @click="installUpdate">立即更新</button>
+          </div>
+        </template>
+
+        <!-- 阶段二：下载进度 / 完成 / 失败（更新日志只在这里展示） -->
+        <template v-else>
+          <h3>正在更新 v{{ pendingUpdate.version }}</h3>
+          <div class="update-progress-head">
+            <span class="update-status" :class="{ failed: updateFailed }">
+              <template v-if="updateFailed">更新失败</template>
+              <template v-else-if="updateStage === 'done'">更新完成</template>
+              <template v-else-if="updateProgress > 0">正在下载 {{ updateProgress }}%</template>
+              <template v-else>正在下载 ...</template>
+            </span>
+            <span class="update-percent">{{ updateProgress }}%</span>
+          </div>
+          <div class="update-progress-bar">
+            <div
+              class="update-progress-fill"
+              :class="{ failed: updateFailed, done: updateStage === 'done' }"
+              :style="{ width: updateProgress + '%' }"
+            ></div>
+          </div>
+          <div ref="updateLogPanel" class="update-log">
+            <p v-for="(line, i) in updateLogs" :key="i" :class="'lvl-' + line.level">
+              <span class="t">{{ line.time }}</span>{{ line.text }}
+            </p>
+          </div>
+          <p v-if="updateStage === 'done'" class="modal-tip center">应用将自动重启，无需其他操作。</p>
+          <p v-if="updateFailed" class="modal-tip">可关闭窗口稍后重试，不影响当前版本使用。</p>
+          <div v-if="updateFailed" class="modal-actions">
+            <button class="ghost-btn" @click="closeUpdateModal">关闭</button>
+            <button class="primary-btn small" @click="installUpdate">重试</button>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -1592,6 +1670,91 @@ onUnmounted(() => {
   border-radius: 10px;
   background: rgba(2, 6, 23, 0.55);
   border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+/* ---------- 更新进度弹出框 ---------- */
+.update-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.update-status {
+  color: #e2e8f0;
+}
+
+.update-status.failed {
+  color: #f87171;
+}
+
+.update-percent {
+  font-family: "Cascadia Code", Consolas, monospace;
+  color: #34d399;
+}
+
+.update-progress-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3b82f6, #34d399);
+  transition: width 0.2s ease;
+}
+
+.update-progress-fill.done {
+  background: #34d399;
+}
+
+.update-progress-fill.failed {
+  background: #f87171;
+}
+
+.update-log {
+  margin-top: 10px;
+  max-height: 130px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #94a3b8;
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.update-log p .t {
+  color: #64748b;
+  margin-right: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-log p.lvl-success {
+  color: #34d399;
+}
+
+.update-log p.lvl-error {
+  color: #f87171;
+}
+
+.modal-tip.center {
+  text-align: center;
+}
+
+.hint-ok {
+  color: #34d399;
+}
+
+.hint-error {
+  color: #f87171;
 }
 
 .modal-actions {
